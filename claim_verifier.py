@@ -11,6 +11,7 @@ from searchweb import search_web_tavily
 from fetchresponse import fetch_tweets_requests, fetch_reddit_claims_for_llm
 from LLM import evaluate_claim_with_llm
 from DB import get_db_connection, store_verification_data
+import random
 import time
 
 load_dotenv()
@@ -31,12 +32,11 @@ TAVILY_API_KEY = os.getenv("TAVILY_API_KEY") # <--- Get Tavily Key
 LLM_API_KEY = os.getenv("GOOGLE_API_KEY")
 GEMINI_MODEL_NAME = os.getenv("GEMINI_MODEL_NAME", "gemini-1.5-flash")
 
-if not all([DB_HOST, DB_NAME, DB_USER, DB_PASSWORD, TEST_BEARER_TOKEN, TAVILY_API_KEY, LLM_API_KEY, NEWSAPI_KEY]):
-    print("ERROR: Missing essential configuration in .env file (DB, X, Tavily, LLM). Exiting.")
+# Commenting out Twitter token requirement since we're only using Reddit
+if not all([DB_HOST, DB_NAME, DB_USER, DB_PASSWORD, TAVILY_API_KEY, LLM_API_KEY, NEWSAPI_KEY]):
+    print("ERROR: Missing essential configuration in .env file (DB, Tavily, LLM). Exiting.")
     sys.exit(1)
 
-
-    
 try:
     genai.configure(api_key=LLM_API_KEY)
     llm_model = genai.GenerativeModel(GEMINI_MODEL_NAME)
@@ -88,23 +88,33 @@ if __name__ == "__main__":
         "europa.eu"
     ]
 
+    # Comment out Twitter variables since we're not using them
+    # twitter_search_query = '#svpol'
+    # max_tweets_to_fetch = 1
+    
+    max_posts_to_fetch = 3
+    max_days_reddit = 2  # Only get Reddit posts from the last 2 days
 
-    twitter_search_query = '#svpol'
-    max_tweets_to_fetch = 1
+    # --- Comment out Twitter fetching, only fetch Reddit posts ---
+    # tweets = fetch_tweets_requests(twitter_search_query, max_tweets_to_fetch, TEST_BEARER_TOKEN)
+    reddit_posts = fetch_reddit_claims_for_llm(
+        max_results=max_posts_to_fetch, 
+        client_id=os.getenv("REDDIT_CLIENT_ID"), 
+        client_secret=os.getenv("REDDIT_CLIENT_SECRET"), 
+        user_agent="python:desinformation-agent:v0.0.1 (by u/laughingmaymays)", 
+        subreddit="svenskpolitik",
+        max_days=max_days_reddit  # Limit to posts from the last 2 days
+    )
 
-    # --- Fetch Tweets using Requests function ---
-    tweets = fetch_tweets_requests(twitter_search_query, max_tweets_to_fetch, TEST_BEARER_TOKEN)
-    reddit_posts = fetch_reddit_claims_for_llm(max_tweets_to_fetch, client_id=os.getenv("REDDIT_CLIENT_ID"), client_secret=os.getenv("REDDIT_CLIENT_SECRET"), user_agent="python:desinformation-agent:v0.0.1 (by u/laughingmaymays)", subreddit="svenskpolitik")
-
-    # --- Process the single fetched tweet ---
-    if not tweets and not reddit_posts:
-        print("No tweets or Reddit posts fetched matching the criteria.")
-        print("No tweet fetched matching the criteria.")
+    # --- Check only for Reddit posts ---
+    if not reddit_posts:
+        print("No Reddit posts fetched matching the criteria.")
         if db_conn:
             db_conn.close()
         sys.exit(0)
 
-
+    # --- Comment out Twitter processing ---
+    '''
     for tweet in tweets:
         # Process tweet
         print(f"Processing tweet: {tweet['id']}")
@@ -152,6 +162,187 @@ if __name__ == "__main__":
         
         # Store data in database
         store_verification_data(db_conn, source_data, claim_data, evaluation_data, search_results, GEMINI_MODEL_NAME)
+    '''
+
+    # Process Reddit posts with linked articles as claims
+    for post in reddit_posts:
+        print(f"Processing Reddit post: {post['url']}")
+        
+        # Check if the post has a linked article
+        if 'link_content' in post and post['link_content']:
+            # Use the article content as the claim source instead of Reddit post title
+            article_title = post.get('link_title', 'Unknown Article')
+            article_url = post.get('link_url', '')
+            article_domain = post.get('link_domain', '')
+            
+            print(f"Processing linked article: {article_title} from {article_domain}")
+            
+            # Extract claims from article content using LangChain chunks
+            if 'link_chunks' in post and post['link_chunks']:
+                article_chunks = post['link_chunks']
+            else:
+                # If no chunks, use the main content
+                article_chunks = [post['link_content']]
+            
+            # Process each chunk of the article as a separate claim
+            for chunk_index, chunk_content in enumerate(article_chunks):
+                # Limit chunk size for processing
+                claim_text = chunk_content[:2000] if len(chunk_content) > 2000 else chunk_content
+                
+                if not claim_text.strip():
+                    print(f"Skipping empty chunk {chunk_index}")
+                    continue
+                    
+                print(f"Processing article chunk {chunk_index+1}/{len(article_chunks)}")
+                
+                # Search for evidence
+                # Use the article title + first sentence as the search query for better results
+                first_sentence = claim_text.split('.')[0] if '.' in claim_text else claim_text[:100]
+                search_query = f"{article_title}: {first_sentence}".strip()
+                
+                # Limit search query length
+                if len(search_query) > 200:
+                    search_query = search_query[:200]
+                    
+                print(f"Using search query: {search_query}")
+                
+                tavily_results = search_web_tavily(search_query, max_results=5, include_domains=RELIABLE_SVENSKA_POLITIK_DOMAINS, tavily_key=TAVILY_API_KEY)
+                time.sleep(1)
+                
+                newsapi_results = search_newsapi(search_query, max_results=5, language='sv', NEWSAPI_KEY=NEWSAPI_KEY)
+                time.sleep(1)
+                
+                # Create the evidence list, excluding the source article itself to avoid circular reasoning
+                search_results = []
+                for result in tavily_results + newsapi_results:
+                    # Skip if this is the same article we're analyzing
+                    if result.get('url') == article_url:
+                        continue
+                    search_results.append(result)
+                
+                # Add the Reddit post details as context evidence
+                reddit_context = {
+                    'title': f"Reddit Post: {post['title']}",
+                    'url': post['url'],
+                    'snippet': post.get('snippet', ''),
+                    'source_name': 'Reddit r/svenskpolitik',
+                    'relevance_score': 8  # High relevance since it's the source of the link
+                }
+                search_results.append(reddit_context)
+                
+                # Evaluate claim
+                evaluation = evaluate_claim_with_llm(claim_text, search_results, llm_model=llm_model)
+                
+                # Prepare data for storage
+                source_data = {
+                    'platform': f"Article via Reddit",
+                    'source_url': article_url,
+                    'author_id': post.get('author', 'unknown'),  # Reddit user who shared it
+                    'author_username': post.get('author', 'unknown'),
+                    'post_timestamp': datetime.fromisoformat(post['created_at']) if 'created_at' in post else datetime.now(timezone.utc),
+                    'fetch_timestamp': datetime.now(timezone.utc)
+                }
+                
+                claim_data = {
+                    'claim_text': claim_text,
+                    'extraction_method': f'linked_article_content_chunk_{chunk_index+1}',
+                    'date_extracted': datetime.now(timezone.utc)
+                }
+                
+                # Include information about the evidence sources in the evaluation data
+                evidence_sources = "article_via_reddit,tavily_search_api,newsapi"
+                
+                evaluation_data = {
+                    'evaluation_timestamp': datetime.now(timezone.utc),
+                    'llm_model_used': GEMINI_MODEL_NAME,
+                    'search_api_used': evidence_sources,
+                    'search_query_used': search_query,
+                    'truthfulness_rating': evaluation['rating'],
+                    'truthfulness_score': evaluation.get('truthfulness_score'),
+                    'llm_reasoning': evaluation['reasoning'],
+                    'evaluation_status': 'Completed'
+                }
+                
+                # Store data in database
+                store_verification_data(db_conn, source_data, claim_data, evaluation_data, search_results, GEMINI_MODEL_NAME)
+                
+                # Add a small delay between processing chunks
+                time.sleep(2)
+                
+        else:
+            # Process the Reddit post itself as a claim if it has no linked article
+            print(f"Processing Reddit post as claim (no article link): {post['title']}")
+            
+            # Combine title and post content for a more complete claim
+            post_title = post.get('title', '')
+            post_content = post.get('snippet', '')
+            
+            # Use both title and content if available, or just title
+            if post_content and len(post_content) > 10:  # Ensure there's meaningful content
+                claim_text = f"{post_title}\n\n{post_content}"
+            else:
+                claim_text = post_title
+                
+            # Limit claim size for processing
+            claim_text = claim_text[:2000] if len(claim_text) > 2000 else claim_text
+            
+            # Skip if there's no meaningful claim
+            if not claim_text.strip():
+                print(f"Skipping empty Reddit post: {post['url']}")
+                continue
+                
+            # Search for evidence
+            search_query = post_title.strip()
+            
+            # Limit search query length
+            if len(search_query) > 200:
+                search_query = search_query[:200]
+                
+            print(f"Using search query: {search_query}")
+            
+            tavily_results = search_web_tavily(search_query, max_results=5, include_domains=RELIABLE_SVENSKA_POLITIK_DOMAINS, tavily_key=TAVILY_API_KEY)
+            time.sleep(1)
+            
+            newsapi_results = search_newsapi(search_query, max_results=5, language='sv', NEWSAPI_KEY=NEWSAPI_KEY)
+            time.sleep(1)
+            
+            # Combine search results
+            search_results = tavily_results + newsapi_results
+            
+            # Evaluate claim
+            evaluation = evaluate_claim_with_llm(claim_text, search_results, llm_model=llm_model)
+            
+            # Prepare data for storage
+            source_data = {
+                'platform': 'Reddit',
+                'source_url': post['url'],
+                'author_id': post.get('author', 'unknown'),
+                'author_username': post.get('author', 'unknown'),
+                'post_timestamp': datetime.fromisoformat(post['created_at']) if 'created_at' in post else datetime.now(timezone.utc),
+                'fetch_timestamp': datetime.now(timezone.utc)
+            }
+            
+            claim_data = {
+                'claim_text': claim_text,
+                'extraction_method': 'reddit_post_content',
+                'date_extracted': datetime.now(timezone.utc)
+            }
+            
+            evidence_sources = "reddit_post,tavily_search_api,newsapi"
+            
+            evaluation_data = {
+                'evaluation_timestamp': datetime.now(timezone.utc),
+                'llm_model_used': GEMINI_MODEL_NAME,
+                'search_api_used': evidence_sources,
+                'search_query_used': search_query,
+                'truthfulness_rating': evaluation['rating'],
+                'truthfulness_score': evaluation.get('truthfulness_score'),
+                'llm_reasoning': evaluation['reasoning'],
+                'evaluation_status': 'Completed'
+            }
+            
+            # Store data in database
+            store_verification_data(db_conn, source_data, claim_data, evaluation_data, search_results, GEMINI_MODEL_NAME)
 
     # --- Cleanup ---
     if db_conn:
