@@ -24,8 +24,9 @@ DB_USER = os.getenv("DB_USER")
 DB_PASSWORD = os.getenv("DB_PASSWORD")
 NEWSAPI_KEY = os.getenv("NEWSAPI_KEY")
 
+
+
 TEST_BEARER_TOKEN = os.getenv("TEST_BEARER_TOKEN") # <--- Get Bearer Token
-print(f"DEBUG: Loaded TEST_BEARER_TOKEN = {TEST_BEARER_TOKEN}") # <-- ADD THIS LINE
 
 TAVILY_API_KEY = os.getenv("TAVILY_API_KEY") # <--- Get Tavily Key
 
@@ -92,11 +93,14 @@ if __name__ == "__main__":
     # twitter_search_query = '#svpol'
     # max_tweets_to_fetch = 1
     
-    max_posts_to_fetch = 3
-    max_days_reddit = 2  # Only get Reddit posts from the last 2 days
+    # Increase the number of Reddit posts to fetch
+    max_posts_to_fetch = 10  # Increased from 3 to 10
+    max_days_reddit = 5      # Increased from 2 to 5 days to get more posts
 
     # --- Comment out Twitter fetching, only fetch Reddit posts ---
     # tweets = fetch_tweets_requests(twitter_search_query, max_tweets_to_fetch, TEST_BEARER_TOKEN)
+    
+    print(f"Fetching up to {max_posts_to_fetch} Reddit posts from the last {max_days_reddit} days...")
     reddit_posts = fetch_reddit_claims_for_llm(
         max_results=max_posts_to_fetch, 
         client_id=os.getenv("REDDIT_CLIENT_ID"), 
@@ -112,6 +116,8 @@ if __name__ == "__main__":
         if db_conn:
             db_conn.close()
         sys.exit(0)
+    else:
+        print(f"Successfully fetched {len(reddit_posts)} Reddit posts for processing.")
 
     # --- Comment out Twitter processing ---
     '''
@@ -165,8 +171,9 @@ if __name__ == "__main__":
     '''
 
     # Process Reddit posts with linked articles as claims
+    processed_count = 0
     for post in reddit_posts:
-        print(f"Processing Reddit post: {post['url']}")
+        print(f"\n=== Processing Reddit post {processed_count + 1}/{len(reddit_posts)}: {post['url']} ===")
         
         # Check if the post has a linked article
         if 'link_content' in post and post['link_content']:
@@ -220,15 +227,8 @@ if __name__ == "__main__":
                         continue
                     search_results.append(result)
                 
-                # Add the Reddit post details as context evidence
-                reddit_context = {
-                    'title': f"Reddit Post: {post['title']}",
-                    'url': post['url'],
-                    'snippet': post.get('snippet', ''),
-                    'source_name': 'Reddit r/svenskpolitik',
-                    'relevance_score': 8  # High relevance since it's the source of the link
-                }
-                search_results.append(reddit_context)
+                # Remove Reddit post as context evidence - only use the linked article content as the claim
+                # and external evidence for evaluation
                 
                 # Evaluate claim
                 evaluation = evaluate_claim_with_llm(claim_text, search_results, llm_model=llm_model)
@@ -344,6 +344,10 @@ if __name__ == "__main__":
             # Store data in database
             store_verification_data(db_conn, source_data, claim_data, evaluation_data, search_results, GEMINI_MODEL_NAME)
 
+        processed_count += 1
+
+    print(f"\nProcessed a total of {processed_count} Reddit posts.")
+    
     # --- Cleanup ---
     if db_conn:
         db_conn.close()
