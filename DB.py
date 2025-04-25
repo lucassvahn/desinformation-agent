@@ -21,9 +21,49 @@ def get_db_connection(DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD):
         sys.exit(1)
 
 def store_verification_data(conn, source_data, claim_data, evaluation_data, evidence_list, GEMINI_MODEL_NAME):
-    """Stores all collected data into the database using a transaction."""
+    """Stores all collected data into the database using a transaction.
+    Skips storage if the LLM determines there's no verifiable claim."""
     cursor = None
     try:
+        # Enhanced check for non-claim content
+        rating = evaluation_data['truthfulness_rating']
+        reasoning = evaluation_data.get('llm_reasoning', '')
+        claims_detected = evaluation_data.get('claims_detected', '')
+        
+        # List of phrases that indicate no verifiable claims were found
+        no_claims_indicators = [
+            "inga verifierbara påståenden",
+            "ingen verifierbar",
+            "inga påståenden",
+            "inga faktapåståenden",
+            "innehåller inte något påstående",
+            "innehåller inte några påståenden",
+            "no verifiable claims",
+            "no factual claims",
+            "cannot verify"
+        ]
+        
+        # Check in rating, reasoning and claims detected
+        skip_storage = False
+        
+        # Check rating (case-insensitive)
+        if rating and any(indicator in rating.lower() for indicator in no_claims_indicators):
+            skip_storage = True
+        
+        # Check reasoning and claims detected for no-claim indicators
+        if reasoning and any(indicator in reasoning.lower() for indicator in no_claims_indicators):
+            skip_storage = True
+        
+        if claims_detected and any(indicator in claims_detected.lower() for indicator in no_claims_indicators):
+            skip_storage = True
+            
+        # Skip storage for content without verifiable claims
+        if skip_storage or rating == "Inga verifierbara påståenden hittades" or rating == "Cannot Verify":
+            print(f"LLM determined that no verifiable claims were found. Skipping database storage.")
+            print(f"Rating: {rating}")
+            print(f"Reasoning excerpt: {reasoning[:100]}...")
+            return True
+
         cursor = conn.cursor()
         print(f"Storing data for source URL: {source_data['source_url']}")
         # 1. Check/Insert Source

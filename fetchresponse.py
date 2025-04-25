@@ -170,7 +170,7 @@ def extract_article_content(url):
 
 
 def fetch_reddit_claims_for_llm(max_results=10, client_id=None, client_secret=None, user_agent="python:desinformation-agent:v0.0.1 (by u/laughingmaymays)", subreddit="svenskpolitik", extract_links=True, max_days=7):
-    """Fetches recent Reddit posts from r/svenskpolitik and formats them for LLM evaluation."""
+    """Fetches recent Reddit posts from specified subreddit and formats them for LLM evaluation."""
     import praw
     from urllib.parse import urlparse
     print(f"Fetching up to {max_results} Reddit posts from the last {max_days} days in r/{subreddit}")
@@ -213,29 +213,37 @@ def fetch_reddit_claims_for_llm(max_results=10, client_id=None, client_secret=No
             }
             
             # Check if the submission has a link (URL posts)
-            if extract_links and hasattr(submission, 'url') and submission.url and not submission.url.startswith(f"https://www.reddit.com/r/{subreddit}"):
+            if hasattr(submission, 'url') and submission.url and not submission.url.startswith(f"https://www.reddit.com/r/{subreddit}"):
                 domain = urlparse(submission.url).netloc
-                print(f"Extracting content from: {submission.url}")
-                article_data = extract_article_content(submission.url)
+                print(f"Found link in post: {submission.url} (domain: {domain})")
                 
-                # Add article data to result
+                # Simply store the link information without content extraction
                 result["link_url"] = submission.url
                 result["link_domain"] = domain
                 
-                if article_data["success"]:
-                    result["link_title"] = article_data["title"]
-                    result["link_content"] = article_data["text"]
+                # Use the post title as the article title (common on r/svenskpolitik)
+                result["link_title"] = submission.title
+                
+                # Only extract content if explicitly requested
+                if extract_links:
+                    print(f"Content extraction is enabled. Extracting from: {submission.url}")
+                    article_data = extract_article_content(submission.url)
                     
-                    # Add additional content from LangChain if available
-                    if "chunks" in article_data and article_data["chunks"]:
-                        result["link_chunks"] = article_data["chunks"]
-                    if "full_text" in article_data:
-                        result["link_full_text"] = article_data["full_text"]
+                    if article_data["success"]:
+                        result["link_content"] = article_data["text"]
                         
-                    if article_data["authors"]:
-                        result["link_authors"] = article_data["authors"]
+                        # Add additional content from LangChain if available
+                        if "chunks" in article_data and article_data["chunks"]:
+                            result["link_chunks"] = article_data["chunks"]
+                        if "full_text" in article_data:
+                            result["link_full_text"] = article_data["full_text"]
+                            
+                        if article_data["authors"]:
+                            result["link_authors"] = article_data["authors"]
+                    else:
+                        result["link_error"] = article_data["error"]
                 else:
-                    result["link_error"] = article_data["error"]
+                    print(f"Content extraction is disabled. Using post title for link: {submission.title}")
                 
             reddit_results.append(result)
             count += 1
