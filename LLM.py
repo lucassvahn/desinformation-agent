@@ -15,7 +15,7 @@ def evaluate_claim_with_llm(claim_text, search_results, llm_model=genai.Generati
         }
 
     prompt = f"""
-    Please act as a neutral and critical fact-checker. Your task is to evaluate the truthfulness of the following content, which may be a short social media post or tweet. The original post and search results may be in Swedish, and your output should also be in Swedish.
+    Please act as a neutral and critical fact-checker. Your task is to evaluate the truthfulness of the following content, which may be a short social media post or tweet. The original post and search results may be in Swedish, and your output should also be in Swedish. Let's think step by step.
 
     Instructions:
     1.  **Crucially, first determine if the 'Content to Evaluate' contains one or more *specific, verifiable factual claims*.**

@@ -15,6 +15,7 @@ def fetch_tweets_requests(query, max_results=1, bearer_token=str(os.getenv("TEST
     print(f"Fetching up to {max_results} tweets via Requests for query: '{query}'")
     tweets_data = []
     search_url = "https://api.twitter.com/2/tweets/search/recent"
+    users_url = "https://api.twitter.com/2/users"
 
     if not bearer_token:
         print("ERROR: Bearer token not found in environment variables.")
@@ -30,7 +31,8 @@ def fetch_tweets_requests(query, max_results=1, bearer_token=str(os.getenv("TEST
     params = {
         'query': full_query,
         'max_results': actual_max_results,
-        'tweet.fields': 'created_at,author_id'
+        'tweet.fields': 'created_at,author_id',
+        'expansions': 'author_id' 
     }
 
     print(f"Requesting URL: {search_url} with query: '{full_query}'")
@@ -39,22 +41,52 @@ def fetch_tweets_requests(query, max_results=1, bearer_token=str(os.getenv("TEST
         response = requests.get(search_url, headers=headers, params=params)
         response.raise_for_status()
         json_response = response.json()
-
-        author_username = 'unknown'
-
+        
+        # Create a dictionary mapping user IDs to usernames
+        user_dict = {}
+        
+        # Extract user information from the includes section (if available)
+        if 'includes' in json_response and 'users' in json_response['includes']:
+            for user in json_response['includes']['users']:
+                user_dict[user['id']] = user.get('username', 'unknown')
+        
         if 'data' in json_response and json_response['data']:
             print(f"Found {len(json_response['data'])} tweets.")
+            
+            # Get any missing user information
+            missing_user_ids = []
             for tweet in json_response['data']:
                 author_id = tweet.get('author_id')
+                if author_id and author_id not in user_dict:
+                    missing_user_ids.append(author_id)
+            
+            # If we have any missing user IDs, fetch their info
+            if missing_user_ids:
+                print(f"Fetching usernames for {len(missing_user_ids)} users")
+                user_lookup_url = f"{users_url}?ids={','.join(missing_user_ids)}"
+                user_response = requests.get(user_lookup_url, headers=headers)
+                
+                if user_response.status_code == 200:
+                    user_data = user_response.json()
+                    if 'data' in user_data:
+                        for user in user_data['data']:
+                            user_dict[user['id']] = user.get('username', 'unknown')
+            
+            # Process tweets with user information
+            for tweet in json_response['data']:
+                author_id = tweet.get('author_id')
+                # Get username from our dictionary or use 'unknown'
+                author_username = user_dict.get(author_id, 'unknown')
                 source_url = f"https://x.com/{author_username}/status/{tweet['id']}"
-
+                
                 tweets_data.append({
                     "id": tweet.get('id'),
                     "text": tweet.get('text'),
                     "author_id": author_id,
                     "author_username": author_username,
                     "created_at": tweet.get('created_at'),
-                    "source_url": source_url
+                    "source_url": source_url,
+                    "platform": "Twitter/X"
                 })
         elif 'meta' in json_response and json_response['meta'].get('result_count', 0) == 0:
             print("No tweets found matching the query.")
