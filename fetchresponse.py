@@ -201,7 +201,7 @@ def extract_article_content(url):
             return {"success": False, "error": str(e)}
 
 
-def fetch_reddit_claims_for_llm(max_results=10, client_id=None, client_secret=None, user_agent="python:desinformation-agent:v0.0.1 (by u/laughingmaymays)", subreddit="svenskpolitik", extract_links=True, max_days=7):
+def fetch_reddit_claims_for_llm(max_results=10, client_id=None, client_secret=None, subreddit="svenskpolitik", extract_links=True, max_days=7):
     """Fetches recent Reddit posts from specified subreddit and formats them for LLM evaluation."""
     import praw
     from urllib.parse import urlparse
@@ -210,7 +210,7 @@ def fetch_reddit_claims_for_llm(max_results=10, client_id=None, client_secret=No
     # Load credentials from env if not passed
     client_id = client_id or os.getenv("REDDIT_CLIENT_ID")
     client_secret = client_secret or os.getenv("REDDIT_CLIENT_SECRET")
-    user_agent = user_agent or os.getenv("REDDIT_USER_AGENT", "python:desinformation-agent:v0.0.1 (by u/laughingmaymays)")
+    user_agent = user_agent or os.getenv("REDDIT_USER_AGENT")
 
     if not all([client_id, client_secret, user_agent]):
         print("ERROR: Missing Reddit API credentials.")

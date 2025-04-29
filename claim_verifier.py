@@ -176,7 +176,6 @@ if __name__ == "__main__":
                 max_results=max_posts_per_subreddit, 
                 client_id=os.getenv("REDDIT_CLIENT_ID"), 
                 client_secret=os.getenv("REDDIT_CLIENT_SECRET"), 
-                user_agent="python:desinformation-agent:v0.0.1 (by u/laughingmaymays)", 
                 subreddit=subreddit,
                 max_days=max_days_reddit,
                 extract_links=False  # Skip article content extraction, use Reddit post titles instead
