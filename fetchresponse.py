@@ -210,7 +210,7 @@ def fetch_reddit_claims_for_llm(max_results=10, client_id=None, client_secret=No
     # Load credentials from env if not passed
     client_id = client_id or os.getenv("REDDIT_CLIENT_ID")
     client_secret = client_secret or os.getenv("REDDIT_CLIENT_SECRET")
-    user_agent = user_agent or os.getenv("REDDIT_USER_AGENT")
+    user_agent = os.getenv("REDDIT_USER_AGENT")
 
     if not all([client_id, client_secret, user_agent]):
         print("ERROR: Missing Reddit API credentials.")
