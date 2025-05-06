@@ -1,8 +1,8 @@
 import google.generativeai as genai
 import re # Import regex module for more robust parsing
 
-def evaluate_claim_with_llm(claim_text, search_results, llm_model=genai.GenerativeModel()):
-    """Uses Google Gemini to evaluate the claim based on search results."""
+def evaluate_claim_with_llm(claim_text, search_results, llm_model=genai.GenerativeModel(), metadata=None):
+    """Uses Google Gemini to evaluate the claim based on search results. Optionally includes metadata (platform, post date) for context."""
     print(f"Evaluating claim using LLM: '{claim_text.split('#', 1)[0].strip()[:50]}...'")
     if not search_results:
         print("WARNING: No search results provided to LLM. Evaluation may be unreliable.")
@@ -14,9 +14,22 @@ def evaluate_claim_with_llm(claim_text, search_results, llm_model=genai.Generati
             "claims_detected": "Cannot Verify due to lack of search results."
         }
 
+    # --- Add metadata context to the prompt if provided ---
+    metadata_str = ""
+    if metadata:
+        platform = metadata.get('platform')
+        post_date = metadata.get('post_date')
+        if platform:
+            metadata_str += f"\nPlatform: {platform}"
+        if post_date:
+            metadata_str += f"\nPost Date: {post_date}"
+        if metadata_str:
+            metadata_str = f"\n[Metadata]{metadata_str}\n"
+
     prompt = f"""
     Please act as a neutral and critical fact-checker. Your task is to evaluate the truthfulness of the following content, which may be a short social media post or tweet. The original post and search results may be in Swedish, and your output should also be in Swedish. Let's think step by step.
 
+    {metadata_str if metadata_str else ''}
     Instructions:
     1.  **Crucially, first determine if the 'Content to Evaluate' contains one or more *specific, verifiable factual claims*.**
         * A factual claim is a statement asserting something that can potentially be proven true or false with objective evidence (e.g., data, statistics, historical records, scientific findings, quotes).

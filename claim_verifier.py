@@ -98,7 +98,7 @@ if __name__ == "__main__":
     ]
 
     # Comment out Twitter variables since we're not using them
-    # twitter_search_query = '#svpol'
+    twitter_search_query = '#svpol'
     # max_tweets_to_fetch = 1
     
     # Specify subreddits to scan for claims
@@ -124,7 +124,13 @@ if __name__ == "__main__":
         search_results = tavily_results + newsapi_results
 
         # Evaluate claim
-        evaluation = evaluate_claim_with_llm(claim_text, search_results, llm_model=llm_model)
+        evaluation = evaluate_claim_with_llm(
+            claim_text, search_results, llm_model=llm_model,
+            metadata={
+                'platform': 'Manual Input',
+                'post_date': datetime.now(timezone.utc).isoformat()
+            }
+        )
 
         # Prepare data for storage
         source_data = {
@@ -199,7 +205,7 @@ if __name__ == "__main__":
         print(f"Successfully fetched a total of {len(all_reddit_posts)} Reddit posts for processing.")
 
     # --- Configure Twitter search ---
-    twitter_search_query = '#svpol OR #svenskpolitik'
+    twitter_search_query = '#svpol'
     max_tweets_to_fetch = 10
     
     # Fetch tweets if not skipped via command-line argument
@@ -287,7 +293,13 @@ if __name__ == "__main__":
                 # and external evidence for evaluation
                 
                 # Evaluate claim
-                evaluation = evaluate_claim_with_llm(claim_text, search_results, llm_model=llm_model)
+                evaluation = evaluate_claim_with_llm(
+                    claim_text, search_results, llm_model=llm_model,
+                    metadata={
+                        'platform': source_data['platform'],
+                        'post_date': source_data['post_timestamp'].isoformat() if 'post_timestamp' in source_data else None
+                    }
+                )
                 
                 # Prepare data for storage
                 source_data = {
@@ -366,7 +378,13 @@ if __name__ == "__main__":
             search_results = tavily_results + newsapi_results
             
             # Evaluate claim
-            evaluation = evaluate_claim_with_llm(claim_text, search_results, llm_model=llm_model)
+            evaluation = evaluate_claim_with_llm(
+                claim_text, search_results, llm_model=llm_model,
+                metadata={
+                    'platform': source_data['platform'],
+                    'post_date': source_data['post_timestamp'].isoformat() if 'post_timestamp' in source_data else None
+                }
+            )
             
             # Prepare data for storage
             source_data = {
@@ -439,7 +457,13 @@ if __name__ == "__main__":
             search_results = tavily_results + newsapi_results
             
             # Evaluate claim
-            evaluation = evaluate_claim_with_llm(claim_text, search_results, llm_model=llm_model)
+            evaluation = evaluate_claim_with_llm(
+                claim_text, search_results, llm_model=llm_model,
+                metadata={
+                    'platform': source_data['platform'],
+                    'post_date': source_data['post_timestamp'].isoformat() if 'post_timestamp' in source_data else None
+                }
+            )
             
             # Prepare data for storage
             source_data = {
