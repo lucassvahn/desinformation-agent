@@ -116,7 +116,7 @@ if __name__ == "__main__":
         author = args.author
 
         # Search for evidence
-        search_query = claim_text.split('#', 1)[0].strip()
+        search_query = claim_text.strip().split('\n\n', 1)[0].split('\n', 1)[0].strip()
         tavily_results = search_web_tavily(search_query, max_results=5, include_domains=RELIABLE_SVENSKA_POLITIK_DOMAINS, tavily_key=TAVILY_API_KEY)
         time.sleep(1)
         newsapi_results = search_newsapi(search_query, max_results=5, language='sv', NEWSAPI_KEY=NEWSAPI_KEY)
