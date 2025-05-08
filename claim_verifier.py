@@ -97,18 +97,15 @@ if __name__ == "__main__":
         "europa.eu"
     ]
 
-    # Comment out Twitter variables since we're not using them
+
     twitter_search_query = '#svpol'
-    # max_tweets_to_fetch = 1
-    
-    # Specify subreddits to scan for claims
+
     subreddits_to_scan = ["svenskpolitik", "Sverige", "sweden"]
     
-    # Increase the number of Reddit posts to fetch
-    max_posts_per_subreddit = 20  # Maximum posts per subreddit
+    max_posts_per_subreddit = 20
     max_days_reddit = 7    
 
-    # Process manually entered claim if provided (do this BEFORE fetching Reddit posts)
+    # Process manually entered claim if provided
     if args.claim:
         print("\n=== Processing manually entered claim ===")
         claim_text = args.claim
@@ -359,6 +356,15 @@ if __name__ == "__main__":
                 print(f"Skipping empty Reddit post: {post['url']}")
                 continue
                 
+            source_data = {
+                'platform': 'Reddit',
+                'source_url': post['url'],
+                'author_id': post.get('author', 'unknown'),
+                'author_username': post.get('author', 'unknown'),
+                'post_timestamp': datetime.fromisoformat(post['created_at']) if 'created_at' in post else datetime.now(timezone.utc),
+                'fetch_timestamp': datetime.now(timezone.utc)
+            }
+            
             # Search for evidence
             search_query = post_title.strip()
             
@@ -386,15 +392,6 @@ if __name__ == "__main__":
                 }
             )
             
-            # Prepare data for storage
-            source_data = {
-                'platform': 'Reddit',
-                'source_url': post['url'],
-                'author_id': post.get('author', 'unknown'),
-                'author_username': post.get('author', 'unknown'),
-                'post_timestamp': datetime.fromisoformat(post['created_at']) if 'created_at' in post else datetime.now(timezone.utc),
-                'fetch_timestamp': datetime.now(timezone.utc)
-            }
             
             claim_data = {
                 'claim_text': claim_text,
@@ -455,6 +452,16 @@ if __name__ == "__main__":
             
             # Combine search results
             search_results = tavily_results + newsapi_results
+
+                        # Prepare data for storage
+            source_data = {
+                'platform': 'Twitter/X',
+                'source_url': tweet['source_url'],
+                'author_id': tweet.get('author_id', 'unknown'),
+                'author_username': tweet.get('author_username', 'unknown'),
+                'post_timestamp': datetime.fromisoformat(tweet['created_at']) if 'created_at' in tweet else datetime.now(timezone.utc),
+                'fetch_timestamp': datetime.now(timezone.utc)
+            }
             
             # Evaluate claim
             evaluation = evaluate_claim_with_llm(
@@ -465,15 +472,7 @@ if __name__ == "__main__":
                 }
             )
             
-            # Prepare data for storage
-            source_data = {
-                'platform': 'Twitter/X',
-                'source_url': tweet['source_url'],
-                'author_id': tweet.get('author_id', 'unknown'),
-                'author_username': tweet.get('author_username', 'unknown'),
-                'post_timestamp': datetime.fromisoformat(tweet['created_at']) if 'created_at' in tweet else datetime.now(timezone.utc),
-                'fetch_timestamp': datetime.now(timezone.utc)
-            }
+
             
             claim_data = {
                 'claim_text': claim_text,
